@@ -1,0 +1,207 @@
+/* MotionMirror 3D — dark hackathon-demo styles */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0a0a0f;
+  --surface: #111118;
+  --border: rgba(255, 255, 255, 0.1);
+  --accent: #00e5ff;
+  --accent2: #7c4dff;
+  --danger: #ff5252;
+  --text: #e0e0e0;
+  --text-dim: #888;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* Header */
+.header {
+  text-align: center;
+  padding: 32px 20px 20px;
+  background: linear-gradient(180deg, #0d0d1a 0%, transparent 100%);
+}
+
+.title {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin-top: 8px;
+  color: var(--text-dim);
+  font-size: 1rem;
+}
+
+/* Error / loading banners */
+.error-banner {
+  margin: 8px 24px;
+  padding: 10px 16px;
+  background: rgba(255, 82, 82, 0.15);
+  border: 1px solid rgba(255, 82, 82, 0.4);
+  border-radius: 8px;
+  color: #ff8a80;
+  font-size: 14px;
+}
+
+.loading-bar {
+  text-align: center;
+  padding: 6px;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.pulse {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Two-panel layout */
+.panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  padding: 0 24px;
+  flex: 1;
+}
+
+@media (max-width: 900px) {
+  .panels { grid-template-columns: 1fr; }
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.panel-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  padding-left: 4px;
+}
+
+/* Webcam container */
+.video-container {
+  position: relative;
+  width: 100%;
+  background: #0c0c14;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Three.js canvas container */
+.canvas-container {
+  position: relative;
+  width: 100%;
+  background: radial-gradient(ellipse at center, #111128 0%, #070710 100%);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.canvas-overlay-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 14px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* Placeholder shown before camera starts */
+.placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-dim);
+  font-size: 14px;
+  z-index: 2;
+}
+
+.placeholder-icon {
+  font-size: 48px;
+  opacity: 0.4;
+}
+
+/* Controls */
+.controls {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 12px 28px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.2s, transform 0.1s;
+  letter-spacing: 0.02em;
+}
+
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent2) 100%);
+  color: #000;
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn-secondary {
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover { background: rgba(255,255,255,0.14); }
+
+/* Footer */
+.footer {
+  text-align: center;
+  padding: 16px;
+  font-size: 12px;
+  color: var(--text-dim);
+  border-top: 1px solid var(--border);
+}
