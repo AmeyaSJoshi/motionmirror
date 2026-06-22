@@ -7,6 +7,7 @@ import { PoseOverlay } from './components/PoseOverlay';
 import { ThreeAvatar } from './components/ThreeAvatar';
 import { HumanoidAvatar } from './components/HumanoidAvatar';
 import { PoseDebugPanel } from './components/PoseDebugPanel';
+import { BodyPartStatus } from './components/BodyPartStatus';
 import './App.css';
 
 const VIDEO_W = 640;
@@ -160,6 +161,11 @@ export default function App() {
 
             {!isActive && (
               <div className="canvas-overlay-hint">Start the camera to see your avatar</div>
+            )}
+
+            {/* Body part detection status — only shown in humanoid mode */}
+            {avatarMode === 'humanoid' && isActive && (
+              <BodyPartStatus landmarks={landmarks} />
             )}
 
             {/* Colour chip strip — visible when appearance has been sampled */}

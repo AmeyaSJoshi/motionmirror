@@ -358,6 +358,55 @@ body {
   box-shadow: 0 1px 4px rgba(0,0,0,0.5);
 }
 
+/* ── Body-part status panel ───────────────────────────────────────────────── */
+.body-part-status {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  background: rgba(10, 10, 20, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 8px;
+  padding: 8px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  pointer-events: none;
+  backdrop-filter: blur(4px);
+}
+
+.bps-title {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+
+.bps-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.bps-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.bps-dot-ok   { background: #4caf50; box-shadow: 0 0 5px rgba(76, 175, 80, 0.7); }
+.bps-dot-miss { background: #444455; }
+
+.bps-label {
+  font-size: 11px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
 /* Footer */
 .footer {
   text-align: center;
