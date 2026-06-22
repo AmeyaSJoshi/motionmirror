@@ -197,6 +197,95 @@ body {
 
 .btn-secondary:hover { background: rgba(255,255,255,0.14); }
 
+/* Capture hint banner */
+.capture-hint {
+  margin: 0 24px 4px;
+  padding: 12px 18px;
+  background: rgba(124, 77, 255, 0.18);
+  border: 1px solid rgba(124, 77, 255, 0.5);
+  border-radius: 8px;
+  color: #ce93d8;
+  font-size: 14px;
+  text-align: center;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Panel header row: label + mode toggle side by side */
+.panel-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 20px;
+}
+
+/* Mode toggle pill group */
+.mode-toggle {
+  display: flex;
+  gap: 4px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.mode-btn {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text-dim);
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.mode-btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+}
+
+.mode-btn.active {
+  background: rgba(0, 229, 255, 0.15);
+  color: var(--accent);
+}
+
+.mode-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Capture Body button */
+.btn-capture {
+  background: rgba(124, 77, 255, 0.2);
+  color: #ce93d8;
+  border: 1px solid rgba(124, 77, 255, 0.5);
+}
+
+.btn-capture:hover:not(:disabled) {
+  background: rgba(124, 77, 255, 0.35);
+}
+
+/* Capture Now — pulsing variant when instruction is shown */
+.btn-capture-ready {
+  background: linear-gradient(135deg, #7c4dff 0%, #e040fb 100%);
+  color: #fff;
+  border: none;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+/* Clear Captured Body button */
+.btn-clear {
+  background: rgba(255, 82, 82, 0.12);
+  color: #ff8a80;
+  border: 1px solid rgba(255, 82, 82, 0.35);
+}
+
+.btn-clear:hover {
+  background: rgba(255, 82, 82, 0.22);
+}
+
 /* Footer */
 .footer {
   text-align: center;
