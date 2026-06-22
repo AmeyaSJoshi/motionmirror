@@ -317,7 +317,7 @@ body {
   cursor: not-allowed;
 }
 
-/* Capture Body button */
+/* Sample Appearance button */
 .btn-capture {
   background: rgba(124, 77, 255, 0.2);
   color: #ce93d8;
@@ -328,15 +328,7 @@ body {
   background: rgba(124, 77, 255, 0.35);
 }
 
-/* Capture Now — pulsing variant when instruction is shown */
-.btn-capture-ready {
-  background: linear-gradient(135deg, #7c4dff 0%, #e040fb 100%);
-  color: #fff;
-  border: none;
-  animation: pulse 1s ease-in-out infinite;
-}
-
-/* Clear Captured Body button */
+/* Reset Appearance button */
 .btn-clear {
   background: rgba(255, 82, 82, 0.12);
   color: #ff8a80;
@@ -345,6 +337,25 @@ body {
 
 .btn-clear:hover {
   background: rgba(255, 82, 82, 0.22);
+}
+
+/* Colour chip strip — small swatches showing sampled appearance colours */
+.color-chips {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  display: flex;
+  gap: 5px;
+  z-index: 10;
+}
+
+.color-chips span {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.3);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5);
 }
 
 /* Footer */

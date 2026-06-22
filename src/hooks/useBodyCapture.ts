@@ -1,66 +1,116 @@
 /**
  * useBodyCapture.ts
  *
- * Handles the "Capture Body" flow with a 10-second countdown:
+ * Handles the "Sample Appearance" flow:
+ *   startCountdown() → 10-second timer → captureBody() fires at t=0
+ *   captureBody()    → snapshots video frame, samples 4 pixel colours
+ *   clearCapture()   → resets state (colours discarded)
  *
- *   startCountdown() → ticks 10…1…0 → auto-calls captureBody()
- *   cancelCountdown() → aborts the timer, resets to idle
- *   captureBody()     → snapshots raw video frame, crops body parts
- *   clearCapture()    → releases all ImageBitmaps (privacy)
+ * ── What this does NOT do ────────────────────────────────────────────────────
+ *   This hook no longer crops or stores image fragments.
+ *   The raw video frame is drawn once to an offscreen canvas, four colour
+ *   values are sampled from landmark-derived positions, and the canvas is
+ *   immediately discarded.  The only data that persists is four hex colour
+ *   strings — no photos are retained in memory.
  *
- * ── Crop extraction algorithm ────────────────────────────────────────────────
- *   For each BodyPartDef:
- *     1. Convert landmark A and B from normalised [0,1] → pixel coords
- *     2. Compute bone midpoint, length, and angle
- *     3. Create a temp canvas (cropW × cropH)
- *     4. Rotate the source image so the bone aligns with the canvas Y-axis,
- *        then draw so the midpoint lands at the canvas centre
- *     5. createImageBitmap() on that canvas → GPU-ready texture
+ * ── Colour sampling algorithm ────────────────────────────────────────────────
+ *   For each region, we compute the average RGB of all pixels within a
+ *   circular sample area centred at the relevant landmark(s):
  *
- *   Stored bitmaps are vertically oriented (height = bone direction) so
- *   PhotoPuppet can re-rotate them to the live bone angle at draw time.
+ *   skin   → nose landmark (centre-face, reliable proxy for face/skin tone)
+ *   hair   → above the ear-midpoint (patches the scalp / hairline)
+ *   top    → centroid of the four shoulder+hip landmarks (shirt centre)
+ *   bottom → midpoint between hips and knees (thigh = trouser colour);
+ *            if legs are not visible, derives a darker shade of the top colour
  *
- * Privacy: bitmaps live only in JS memory and are released by clearCapture().
- * Nothing is ever uploaded or persisted.
+ *   All coordinates are in raw (unmirrored) video space, matching the coordinate
+ *   system used by MediaPipe landmarks.
+ *
+ * ── Privacy ───────────────────────────────────────────────────────────────────
+ *   The offscreen canvas used for sampling is not stored, not exposed, and not
+ *   uploaded.  clearCapture() sets colours back to null.
  */
 
 import { useState, useCallback, useRef } from 'react';
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision';
-import { BODY_PART_DEFS, type BodyPartDef } from '../utils/bodyRegions';
 
 export const COUNTDOWN_SECONDS = 10;
 
-export interface CapturedRegion {
-  def: BodyPartDef;
-  bitmap: ImageBitmap;
-  cropW: number; // pixel width of the stored crop
-  cropH: number; // pixel height (≈ calibration bone length + padding)
-  /** For head only: the scale multiplier baked in at capture time */
-  headScaleMultiplier?: number;
+export interface AppearanceColors {
+  skin:   string; // hex — face / skin tone
+  hair:   string; // hex — hair colour
+  top:    string; // hex — shirt / top
+  bottom: string; // hex — pants / lower body
 }
 
 export interface BodyCaptureState {
   isCapturing: boolean;
   hasCaptured: boolean;
-  capturedRegions: CapturedRegion[];
-  /** null = idle; 1-10 = counting down; 0 = capturing now */
-  countdown: number | null;
-  error: string | null;
+  colors:      AppearanceColors | null;
+  countdown:   number | null;   // null = idle, 1-10 = counting, 0 = capturing
+  error:       string | null;
 }
+
+// ── Pixel sampling helpers ────────────────────────────────────────────────────
+
+/**
+ * Average the RGB of all pixels inside a circle of the given radius.
+ * Returns a hex colour string.  cx / cy are in pixel space.
+ */
+function sampleCircle(
+  data: Uint8ClampedArray,
+  cx: number, cy: number, radius: number,
+  W: number, H: number,
+): string {
+  let r = 0, g = 0, b = 0, n = 0;
+  const r2 = radius * radius;
+  const x0 = Math.max(0, Math.floor(cx - radius));
+  const x1 = Math.min(W - 1, Math.ceil(cx + radius));
+  const y0 = Math.max(0, Math.floor(cy - radius));
+  const y1 = Math.min(H - 1, Math.ceil(cy + radius));
+
+  for (let py = y0; py <= y1; py++) {
+    for (let px = x0; px <= x1; px++) {
+      const dx = px - cx, dy = py - cy;
+      if (dx * dx + dy * dy > r2) continue;
+      const i = (py * W + px) * 4;
+      r += data[i]; g += data[i + 1]; b += data[i + 2];
+      n++;
+    }
+  }
+
+  if (n === 0) return '#888888';
+  const hex = (v: number) =>
+    Math.max(0, Math.min(255, Math.round(v / n))).toString(16).padStart(2, '0');
+  return `#${hex(r)}${hex(g)}${hex(b)}`;
+}
+
+/**
+ * Darken a hex colour by a factor (0–1).
+ * Used to estimate pants colour when the lower body is not in frame.
+ */
+function darkenHex(hex: string, factor = 0.55): string {
+  const n = parseInt(hex.replace('#', ''), 16);
+  const r = Math.round(((n >> 16) & 0xff) * factor);
+  const g = Math.round(((n >>  8) & 0xff) * factor);
+  const b = Math.round(((n      ) & 0xff) * factor);
+  return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+// ── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useBodyCapture() {
   const [state, setState] = useState<BodyCaptureState>({
     isCapturing: false,
     hasCaptured: false,
-    capturedRegions: [],
-    countdown: null,
-    error: null,
+    colors:      null,
+    countdown:   null,
+    error:       null,
   });
 
-  // Holds the setInterval id so we can cancel mid-count
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Internal: do the actual snapshot + crop ─────────────────────────────
+  // ── Internal: snapshot frame and sample appearance colours ────────────────
   const captureBody = useCallback(async (
     video: HTMLVideoElement,
     landmarks: NormalizedLandmark[],
@@ -68,78 +118,73 @@ export function useBodyCapture() {
     setState(s => ({ ...s, isCapturing: true, countdown: 0, error: null }));
 
     try {
-      const W = video.videoWidth;
-      const H = video.videoHeight;
-      if (W === 0 || H === 0) throw new Error('Video not ready');
+      const W = video.videoWidth, H = video.videoHeight;
+      if (W === 0 || H === 0) throw new Error('Video stream not ready.');
 
-      // Step 1 — snapshot the raw (unmirrored) video frame
-      const sourceCanvas = document.createElement('canvas');
-      sourceCanvas.width  = W;
-      sourceCanvas.height = H;
-      const srcCtx = sourceCanvas.getContext('2d')!;
-      srcCtx.drawImage(video, 0, 0, W, H);
+      // Draw the raw (unmirrored) frame to an offscreen canvas for pixel access.
+      // This canvas is local to this function and discarded after sampling.
+      const offscreen = document.createElement('canvas');
+      offscreen.width = W; offscreen.height = H;
+      const ctx = offscreen.getContext('2d')!;
+      ctx.drawImage(video, 0, 0, W, H);
+      const { data } = ctx.getImageData(0, 0, W, H);
 
-      // Step 2 — extract a rotated-rectangle crop per body part
-      const regions: CapturedRegion[] = [];
+      const sr = Math.round(W * 0.028); // sample radius ≈ 2.8% of frame width
 
-      for (const def of BODY_PART_DEFS) {
-        const lmA = def.getA(landmarks);
-        const lmB = def.getB(landmarks);
+      // ── Skin tone ──────────────────────────────────────────────────────────
+      // Nose landmark (index 0) sits at the centre of the face; sampling there
+      // captures the central skin tone reliably and avoids hair/clothing edges.
+      const nose = landmarks[0];
+      const skin = (nose?.visibility ?? 0) > 0.2
+        ? sampleCircle(data, nose.x * W, nose.y * H, sr, W, H)
+        : '#D4956A';
 
-        const minVis = Math.min(lmA.visibility ?? 1, lmB.visibility ?? 1);
-        if (minVis < 0.25) continue;
-
-        // Normalised → pixel coords (raw/unmirrored frame)
-        const ax = lmA.x * W,  ay = lmA.y * H;
-        const bx = lmB.x * W,  by = lmB.y * H;
-
-        const boneLen = Math.hypot(bx - ax, by - ay);
-        if (boneLen < 8) continue;
-
-        const midX  = (ax + bx) / 2;
-        const midY  = (ay + by) / 2;
-
-        // Crop size: height = bone length + padding on each end
-        const padPx = boneLen * def.padRatio;
-        const cropH = Math.ceil(boneLen + 2 * padPx);
-        const cropW = Math.ceil(cropH * def.widthRatio);
-
-        // Angle of the A→B vector from +X axis
-        const angle = Math.atan2(by - ay, bx - ax);
-
-        // ── Rotated crop ────────────────────────────────────────────────────
-        //   Goal: extract a rectangle whose height axis aligns with the bone.
-        //   Transform applied to the source image:
-        //     (1) Translate so the bone midpoint maps to the canvas centre
-        //     (2) Rotate by (π/2 - angle) so the bone direction becomes +Y
-        //   This "un-rotates" the bone to vertical so the stored bitmap is
-        //   always axis-aligned — PhotoPuppet re-rotates at draw time.
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width  = cropW;
-        tempCanvas.height = cropH;
-        const tCtx = tempCanvas.getContext('2d')!;
-
-        tCtx.save();
-        tCtx.translate(cropW / 2, cropH / 2);   // pivot = canvas centre
-        tCtx.rotate(Math.PI / 2 - angle);        // un-rotate bone to vertical
-        tCtx.drawImage(sourceCanvas, -midX, -midY); // place midpoint at pivot
-        tCtx.restore();
-
-        try {
-          const bitmap = await createImageBitmap(tempCanvas);
-          regions.push({ def, bitmap, cropW, cropH });
-        } catch {
-          // Non-fatal — skip this part
-        }
+      // ── Hair colour ────────────────────────────────────────────────────────
+      // The ear midpoint is a stable reference for the sides of the head.
+      // Shifting 2.5× sample-radii upward from there typically lands on the
+      // hairline or scalp region, away from skin and shirt.
+      const lEar = landmarks[7], rEar = landmarks[8];
+      let hair = '#2E1C0E';
+      if (lEar && rEar && Math.min(lEar.visibility ?? 0, rEar.visibility ?? 0) > 0.2) {
+        const earX = (lEar.x + rEar.x) / 2 * W;
+        const earY = (lEar.y + rEar.y) / 2 * H - sr * 2.5;
+        hair = sampleCircle(data, earX, earY, sr, W, H);
       }
 
-      if (regions.length === 0) {
-        throw new Error('No body parts detected — make sure your full body is visible.');
+      // ── Shirt / top colour ─────────────────────────────────────────────────
+      // Centroid of the four shoulder + hip landmarks lands approximately at
+      // the chest centre, away from arm shadows and collar/neckline edges.
+      const lS = landmarks[11], rS = landmarks[12];
+      const lH = landmarks[23], rH = landmarks[24];
+      let top = '#1565C0';
+      if (lS && rS && lH && rH) {
+        const topX = (lS.x + rS.x + lH.x + rH.x) / 4 * W;
+        const topY = (lS.y + rS.y + lH.y + rH.y) / 4 * H;
+        top = sampleCircle(data, topX, topY, sr * 1.6, W, H);
       }
 
-      setState(prev => {
-        prev.capturedRegions.forEach(r => r.bitmap.close()); // release old bitmaps
-        return { isCapturing: false, hasCaptured: true, capturedRegions: regions, countdown: null, error: null };
+      // ── Pants / bottom colour ──────────────────────────────────────────────
+      // Midpoint between hips and knees sits in the middle of the thigh.
+      // If knees are not visible (< 0.3 confidence), the lower body is
+      // probably cut off — derive pants colour by darkening the shirt colour.
+      const lK = landmarks[25], rK = landmarks[26];
+      const kneeVis = Math.min(lK?.visibility ?? 0, rK?.visibility ?? 0);
+      let bottom: string;
+      if (kneeVis >= 0.3 && lH && rH && lK && rK) {
+        const botX = (lH.x + rH.x + lK.x + rK.x) / 4 * W;
+        const botY = (lH.y + rH.y + lK.y + rK.y) / 4 * H;
+        bottom = sampleCircle(data, botX, botY, sr, W, H);
+      } else {
+        // Lower body not visible — estimate a plausible darker trouser shade
+        bottom = darkenHex(top, 0.55);
+      }
+
+      setState({
+        isCapturing: false,
+        hasCaptured: true,
+        colors: { skin, hair, top, bottom },
+        countdown: null,
+        error: null,
       });
 
     } catch (err: unknown) {
@@ -148,40 +193,30 @@ export function useBodyCapture() {
     }
   }, []);
 
-  // ── Public: start the 10-second countdown ─────────────────────────────
+  // ── Public: start the 10-second countdown then auto-capture ──────────────
   const startCountdown = useCallback((
     videoRef: React.RefObject<HTMLVideoElement | null>,
     getLandmarks: () => NormalizedLandmark[] | null,
   ) => {
-    // Guard: don't start if already counting or capturing
     setState(s => {
       if (s.countdown !== null || s.isCapturing) return s;
       return { ...s, countdown: COUNTDOWN_SECONDS, error: null };
     });
 
     let remaining = COUNTDOWN_SECONDS;
-
-    // Clear any stale interval
     if (intervalRef.current !== null) clearInterval(intervalRef.current);
 
     intervalRef.current = setInterval(() => {
       remaining -= 1;
-
       if (remaining <= 0) {
-        // Time's up — fire the capture
         clearInterval(intervalRef.current!);
         intervalRef.current = null;
-
         const video = videoRef.current;
         const lm    = getLandmarks();
         if (video && lm) {
           void captureBody(video, lm);
         } else {
-          setState(s => ({
-            ...s,
-            countdown: null,
-            error: 'Pose not detected at capture time — please try again.',
-          }));
+          setState(s => ({ ...s, countdown: null, error: 'No pose detected at capture time. Please try again.' }));
         }
       } else {
         setState(s => ({ ...s, countdown: remaining }));
@@ -189,7 +224,6 @@ export function useBodyCapture() {
     }, 1000);
   }, [captureBody]);
 
-  // ── Public: cancel mid-countdown ──────────────────────────────────────
   const cancelCountdown = useCallback(() => {
     if (intervalRef.current !== null) {
       clearInterval(intervalRef.current);
@@ -198,17 +232,14 @@ export function useBodyCapture() {
     setState(s => ({ ...s, countdown: null }));
   }, []);
 
-  // ── Public: release all bitmaps for privacy ───────────────────────────
   const clearCapture = useCallback(() => {
     if (intervalRef.current !== null) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-    setState(prev => {
-      prev.capturedRegions.forEach(r => r.bitmap.close());
-      return { isCapturing: false, hasCaptured: false, capturedRegions: [], countdown: null, error: null };
-    });
+    // Colours are plain strings — nothing to release
+    setState({ isCapturing: false, hasCaptured: false, colors: null, countdown: null, error: null });
   }, []);
 
-  return { ...state, startCountdown, cancelCountdown, captureBody, clearCapture };
+  return { ...state, startCountdown, cancelCountdown, clearCapture };
 }
