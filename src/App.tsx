@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useCamera } from './hooks/useCamera';
 import { usePoseDetection } from './hooks/usePoseDetection';
 import { useBodyCapture } from './hooks/useBodyCapture';
@@ -7,12 +7,12 @@ import { PoseOverlay } from './components/PoseOverlay';
 import { ThreeAvatar } from './components/ThreeAvatar';
 import { PhotoPuppet } from './components/PhotoPuppet';
 import { PoseDebugPanel } from './components/PoseDebugPanel';
+import { useState } from 'react';
 import './App.css';
 
 const VIDEO_W = 640;
 const VIDEO_H = 480;
 
-// Avatar display modes for the right panel
 type AvatarMode = 'skeleton' | 'photo';
 
 export default function App() {
@@ -22,55 +22,53 @@ export default function App() {
     startDetection, stopDetection, reset,
   } = usePoseDetection(videoRef);
   const {
-    isCapturing, hasCaptured, capturedRegions, error: captureError,
-    captureBody, clearCapture,
+    isCapturing, hasCaptured, capturedRegions, countdown, error: captureError,
+    startCountdown, cancelCountdown, clearCapture,
   } = useBodyCapture();
 
   const [avatarMode, setAvatarMode] = useState<AvatarMode>('skeleton');
-  // Show capture instruction banner when user clicks "Capture Body"
-  const [showCaptureHint, setShowCaptureHint] = useState(false);
+
+  // Stable ref to latest landmarks so the countdown closure can read them at t=0
+  const landmarksRef = useRef(landmarks);
+  useEffect(() => { landmarksRef.current = landmarks; }, [landmarks]);
 
   // Auto-start detection once camera is active and model is ready
   useEffect(() => {
     if (isActive && isReady && !isDetecting) startDetection();
   }, [isActive, isReady, isDetecting, startDetection]);
 
+  // Auto-switch to photo mode after a successful capture
+  useEffect(() => {
+    if (hasCaptured) setAvatarMode('photo');
+  }, [hasCaptured]);
+
   const handleStart = useCallback(async () => {
     await startCamera();
   }, [startCamera]);
 
   const handleStop = useCallback(() => {
+    cancelCountdown();
     stopDetection();
     stopCamera();
     clearCapture();
-    setShowCaptureHint(false);
-  }, [stopDetection, stopCamera, clearCapture]);
+    setAvatarMode('skeleton');
+  }, [cancelCountdown, stopDetection, stopCamera, clearCapture]);
 
   const handleReset = useCallback(() => reset(), [reset]);
 
-  // First click: show the T-pose instruction
-  // Second click (while hint is showing): actually capture
-  const handleCaptureClick = useCallback(async () => {
-    if (!showCaptureHint) {
-      setShowCaptureHint(true);
-      return;
-    }
-    if (!videoRef.current || !landmarks) return;
-    setShowCaptureHint(false);
-    await captureBody(videoRef.current, landmarks);
-    setAvatarMode('photo');
-  }, [showCaptureHint, videoRef, landmarks, captureBody]);
+  const handleCaptureClick = useCallback(() => {
+    // Pass a getter for live landmarks so the countdown fires captureBody()
+    // with the frame that exists at t=0, not the frame when the button was clicked.
+    startCountdown(videoRef, () => landmarksRef.current);
+  }, [startCountdown, videoRef]);
 
   const handleClear = useCallback(() => {
     clearCapture();
     setAvatarMode('skeleton');
-    setShowCaptureHint(false);
   }, [clearCapture]);
 
   const error = cameraError || poseError || captureError;
-
-  const rightPanelLabel =
-    avatarMode === 'skeleton' ? '3D Skeleton' : 'Photo Body';
+  const isCounting = countdown !== null && !isCapturing;
 
   return (
     <div className="app">
@@ -87,11 +85,16 @@ export default function App() {
         </div>
       )}
 
-      {/* T-pose instruction banner */}
-      {showCaptureHint && (
-        <div className="capture-hint">
-          <strong>Stand in a T-pose or A-pose</strong> — arms out, full body visible in the camera.
-          Then click <strong>Capture Now</strong> below.
+      {/* ── Countdown overlay ─────────────────────────────────────────────── */}
+      {isCounting && (
+        <div className="countdown-banner">
+          <span className="countdown-instruction">
+            Stand fully in frame — A-pose or T-pose, arms out. Capture begins in:
+          </span>
+          <span className="countdown-number">{countdown}</span>
+          <button className="btn btn-cancel-countdown" onClick={cancelCountdown}>
+            ✕ Cancel Capture
+          </button>
         </div>
       )}
 
@@ -108,6 +111,14 @@ export default function App() {
             )}
             <CameraFeed videoRef={videoRef} isActive={isActive} />
             <PoseOverlay landmarks={landmarks} width={VIDEO_W} height={VIDEO_H} />
+
+            {/* Inline countdown display over the camera feed while counting */}
+            {isCounting && (
+              <div className="camera-countdown-overlay">
+                <div className="camera-countdown-number">{countdown}</div>
+              </div>
+            )}
+
             <PoseDebugPanel
               isReady={isReady}
               isDetecting={isDetecting}
@@ -117,11 +128,12 @@ export default function App() {
           </div>
         </section>
 
-        {/* RIGHT: Avatar panel — switches between 3D skeleton and photo puppet */}
+        {/* RIGHT: Avatar panel */}
         <section className="panel panel-right">
           <div className="panel-header-row">
-            <div className="panel-label">{rightPanelLabel}</div>
-            {/* Mode toggle — only show when camera is active */}
+            <div className="panel-label">
+              {avatarMode === 'skeleton' ? '3D Skeleton' : 'Photo Body'}
+            </div>
             {isActive && (
               <div className="mode-toggle">
                 <button
@@ -143,12 +155,10 @@ export default function App() {
           </div>
 
           <div className="canvas-container" style={{ aspectRatio: `${VIDEO_W}/${VIDEO_H}` }}>
-            {/* Always mount ThreeAvatar — hide it in photo mode to preserve state */}
             <div style={{ display: avatarMode === 'skeleton' ? 'block' : 'none', position: 'absolute', inset: 0 }}>
               <ThreeAvatar landmarks={landmarks} />
             </div>
 
-            {/* Photo puppet — only rendered in photo mode */}
             {avatarMode === 'photo' && (
               <PhotoPuppet
                 landmarks={landmarks}
@@ -165,7 +175,7 @@ export default function App() {
         </section>
       </main>
 
-      {/* Controls */}
+      {/* ── Controls ──────────────────────────────────────────────────────── */}
       <div className="controls">
         {!isActive ? (
           <button className="btn btn-primary" onClick={handleStart} disabled={!isReady}>
@@ -176,23 +186,18 @@ export default function App() {
             <button className="btn btn-danger" onClick={handleStop}>■ Stop Camera</button>
             <button className="btn btn-secondary" onClick={handleReset}>↺ Reset</button>
 
-            {/* Capture Body — two-step: instruction → capture */}
-            {!hasCaptured && (
+            {/* Capture button — hidden while counting (cancel is in the banner) */}
+            {!hasCaptured && !isCounting && (
               <button
-                className={`btn ${showCaptureHint ? 'btn-capture-ready' : 'btn-capture'}`}
+                className="btn btn-capture"
                 onClick={handleCaptureClick}
                 disabled={isCapturing || !landmarks}
                 title={!landmarks ? 'No pose detected yet' : undefined}
               >
-                {isCapturing
-                  ? '⟳ Capturing…'
-                  : showCaptureHint
-                    ? '📸 Capture Now'
-                    : '🧍 Capture Body'}
+                {isCapturing ? '⟳ Capturing…' : '🧍 Capture Body'}
               </button>
             )}
 
-            {/* Clear — removes stored photo for privacy */}
             {hasCaptured && (
               <button className="btn btn-clear" onClick={handleClear}>
                 🗑 Clear Captured Body

@@ -197,17 +197,78 @@ body {
 
 .btn-secondary:hover { background: rgba(255,255,255,0.14); }
 
-/* Capture hint banner */
-.capture-hint {
-  margin: 0 24px 4px;
-  padding: 12px 18px;
-  background: rgba(124, 77, 255, 0.18);
-  border: 1px solid rgba(124, 77, 255, 0.5);
-  border-radius: 8px;
+/* ── Countdown banner (appears above the panels) ──────────────────────────── */
+.countdown-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin: 0 24px 8px;
+  padding: 14px 20px;
+  background: rgba(124, 77, 255, 0.20);
+  border: 1px solid rgba(124, 77, 255, 0.55);
+  border-radius: 10px;
+  flex-wrap: wrap;
+}
+
+.countdown-instruction {
   color: #ce93d8;
   font-size: 14px;
+  font-weight: 500;
+}
+
+.countdown-number {
+  font-size: 2.8rem;
+  font-weight: 900;
+  color: #fff;
+  min-width: 2.5ch;
   text-align: center;
-  animation: pulse 1.5s ease-in-out infinite;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  text-shadow: 0 0 20px rgba(124, 77, 255, 0.8);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+/* Large countdown number overlaid on the live camera feed */
+.camera-countdown-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.camera-countdown-number {
+  font-size: clamp(5rem, 18vw, 9rem);
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.90);
+  text-shadow:
+    0 0 30px rgba(124, 77, 255, 0.9),
+    0 0 60px rgba(0, 229, 255, 0.5);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  animation: pulse 1s ease-in-out infinite;
+  user-select: none;
+}
+
+/* Cancel countdown button */
+.btn-cancel-countdown {
+  padding: 8px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid rgba(255, 82, 82, 0.45);
+  background: rgba(255, 82, 82, 0.12);
+  color: #ff8a80;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.btn-cancel-countdown:hover {
+  background: rgba(255, 82, 82, 0.25);
 }
 
 /* Panel header row: label + mode toggle side by side */
