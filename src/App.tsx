@@ -6,6 +6,7 @@ import { CameraFeed } from './components/CameraFeed';
 import { PoseOverlay } from './components/PoseOverlay';
 import { ThreeAvatar } from './components/ThreeAvatar';
 import { HumanoidAvatar } from './components/HumanoidAvatar';
+import type { HiddenPart } from './components/HumanoidAvatar';
 import { PoseDebugPanel } from './components/PoseDebugPanel';
 import { BodyPartStatus } from './components/BodyPartStatus';
 import './App.css';
@@ -31,6 +32,15 @@ export default function App() {
   // Default to humanoid so the avatar is immediately visible on camera start
   const [avatarMode, setAvatarMode] = useState<AvatarMode>('humanoid');
 
+  // Debug: manually force-hide named body-part groups to verify visibility works
+  const [hiddenParts, setHiddenParts] = useState<Set<HiddenPart>>(new Set());
+  const toggleHide = (part: HiddenPart) =>
+    setHiddenParts(prev => {
+      const next = new Set(prev);
+      next.has(part) ? next.delete(part) : next.add(part);
+      return next;
+    });
+
   // Stable ref to latest landmarks so the countdown closure reads them at t=0
   // rather than the stale closure captured when the button was clicked.
   const landmarksRef = useRef(landmarks);
@@ -51,6 +61,7 @@ export default function App() {
     stopCamera();
     clearCapture();
     setAvatarMode('humanoid');
+    setHiddenParts(new Set());
   }, [cancelCountdown, stopDetection, stopCamera, clearCapture]);
 
   const handleReset = useCallback(() => reset(), [reset]);
@@ -153,7 +164,7 @@ export default function App() {
           <div className="canvas-container" style={{ aspectRatio: `${VIDEO_W}/${VIDEO_H}` }}>
             {/* Conditionally mount each Canvas — only the active mode is in the DOM */}
             {avatarMode === 'humanoid' && (
-              <HumanoidAvatar landmarks={landmarks} colors={colors} />
+              <HumanoidAvatar landmarks={landmarks} colors={colors} hiddenParts={hiddenParts} />
             )}
             {avatarMode === 'skeleton' && (
               <ThreeAvatar landmarks={landmarks} />
@@ -212,6 +223,22 @@ export default function App() {
           </>
         )}
       </div>
+
+      {/* Debug hide toggles — only shown in humanoid mode while camera is active */}
+      {isActive && avatarMode === 'humanoid' && (
+        <div className="debug-hide-row">
+          <span className="debug-hide-label">Force hide:</span>
+          {(['lArm', 'rArm', 'legs', 'hands'] as HiddenPart[]).map(part => (
+            <button
+              key={part}
+              className={`btn-hide-toggle ${hiddenParts.has(part) ? 'active' : ''}`}
+              onClick={() => toggleHide(part)}
+            >
+              {hiddenParts.has(part) ? '✓ ' : ''}{part}
+            </button>
+          ))}
+        </div>
+      )}
 
       <footer className="footer">
         Powered by MediaPipe Pose + Three.js · No backend · No API keys · No photos stored
